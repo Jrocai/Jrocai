@@ -1,0 +1,131 @@
+# ================================================================
+# J-ROC AI — Environment Variables Reference
+# Copy this file to .env and fill in every value marked <REQUIRED>
+# Values marked <OPTIONAL> can be left blank to disable that feature
+# NEVER commit your real .env to GitHub
+# ================================================================
+
+# ── App ─────────────────────────────────────────────────────────
+NODE_ENV=development
+APP_NAME="J-ROC AI"
+APP_URL=https://jrocai.online
+API_URL=https://api.jrocai.online
+NEXT_PUBLIC_APP_URL=https://jrocai.online
+NEXT_PUBLIC_API_URL=https://api.jrocai.online
+NEXT_PUBLIC_WS_URL=wss://api.jrocai.online
+
+# ── Database — Supabase or Neon PostgreSQL ───────────────────────
+# <REQUIRED> Full connection string with pgbouncer for pooling
+DATABASE_URL=postgresql://USER:PASSWORD@HOST:6543/jrocai?pgbouncer=true
+# <REQUIRED> Direct connection (used by Prisma migrate)
+DIRECT_DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/jrocai
+
+# ── Supabase ────────────────────────────────────────────────────
+# <REQUIRED> Get from: supabase.com > Project Settings > API
+NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+SUPABASE_JWT_SECRET=your-jwt-secret-from-supabase-settings
+
+# ── NextAuth / Auth.js ───────────────────────────────────────────
+# <REQUIRED> Generate: openssl rand -base64 32
+NEXTAUTH_SECRET=REPLACE_WITH_32_CHAR_RANDOM_STRING
+NEXTAUTH_URL=https://jrocai.online
+
+# OAuth — Google
+# <OPTIONAL> console.cloud.google.com > APIs & Services > Credentials
+GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=GOCSPX-your-google-client-secret
+
+# OAuth — GitHub
+# <OPTIONAL> github.com/settings/applications/new
+GITHUB_CLIENT_ID=your-github-client-id
+GITHUB_CLIENT_SECRET=your-github-client-secret
+
+# ── AI Providers ────────────────────────────────────────────────
+# <REQUIRED> platform.openai.com/api-keys
+OPENAI_API_KEY=sk-proj-...
+OPENAI_ORG_ID=org-...
+
+# <REQUIRED> console.anthropic.com
+ANTHROPIC_API_KEY=sk-ant-api03-...
+
+# <OPTIONAL> aistudio.google.com
+GOOGLE_AI_API_KEY=AIzaSy...
+
+# <OPTIONAL> console.groq.com (fast inference)
+GROQ_API_KEY=gsk_...
+
+# ── AI Config ────────────────────────────────────────────────────
+AI_DEFAULT_MODEL=gpt-4o
+AI_FALLBACK_MODEL=claude-3-5-sonnet-20241022
+AI_EMBEDDING_MODEL=text-embedding-3-small
+AI_MAX_TOKENS=4096
+AI_TEMPERATURE=0.7
+# Monthly AI spend cap in USD — alerts at 80%
+AI_MONTHLY_BUDGET_USD=500
+# Default autonomy level for new users (0-5)
+AUTONOMY_LEVEL_DEFAULT=2
+
+# ── Redis — Upstash ─────────────────────────────────────────────
+# <REQUIRED> console.upstash.com
+REDIS_URL=redis://localhost:6379
+UPSTASH_REDIS_REST_URL=https://YOUR_ID.upstash.io
+UPSTASH_REDIS_REST_TOKEN=AXxxAAIjcDE...
+# Queue concurrency limits
+QUEUE_AGENT_CONCURRENCY=10
+QUEUE_WORKFLOW_CONCURRENCY=5
+
+# ── File Storage — Cloudflare R2 ────────────────────────────────
+# <REQUIRED> dash.cloudflare.com > R2
+R2_ACCOUNT_ID=your-cloudflare-account-id
+R2_ACCESS_KEY_ID=your-r2-access-key
+R2_SECRET_ACCESS_KEY=your-r2-secret-key
+R2_BUCKET_NAME=jroc-ai-storage
+R2_BUCKET_NAME_PUBLIC=jroc-ai-public
+NEXT_PUBLIC_R2_PUBLIC_URL=https://files.jrocai.online
+# Max file size in MB
+R2_MAX_FILE_SIZE_MB=100
+
+# ── Billing — Stripe ────────────────────────────────────────────
+# <REQUIRED> dashboard.stripe.com/apikeys
+STRIPE_SECRET_KEY=sk_live_...
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_live_...
+# <REQUIRED> Webhook secret from dashboard.stripe.com/webhooks
+STRIPE_WEBHOOK_SECRET=whsec_...
+# Price IDs from Stripe dashboard
+STRIPE_PRICE_PERSONAL_MONTHLY=price_...
+STRIPE_PRICE_PERSONAL_ANNUAL=price_...
+STRIPE_PRICE_BUSINESS_MONTHLY=price_...
+STRIPE_PRICE_BUSINESS_ANNUAL=price_...
+STRIPE_PRICE_COMMANDER_MONTHLY=price_...
+STRIPE_PRICE_COMMANDER_ANNUAL=price_...
+# Trial period in days
+STRIPE_TRIAL_DAYS=14
+
+# ── Email — Resend ──────────────────────────────────────────────
+# <REQUIRED> resend.com/api-keys
+RESEND_API_KEY=re_...
+EMAIL_FROM="J-ROC AI <noreply@jrocai.online>"
+EMAIL_REPLY_TO=support@jrocai.online
+
+# ── Monitoring & Analytics ───────────────────────────────────────
+# <OPTIONAL> sentry.io
+SENTRY_DSN=https://abc123@o123456.ingest.sentry.io/123456
+SENTRY_ORG=jroc-ai
+SENTRY_PROJECT=jroc-ai-web
+
+# <OPTIONAL> posthog.com
+NEXT_PUBLIC_POSTHOG_KEY=phc_...
+NEXT_PUBLIC_POSTHOG_HOST=https://app.posthog.com
+
+# ── Feature Flags ────────────────────────────────────────────────
+ENABLE_VOICE_COMMANDS=true
+ENABLE_AGENT_SWARM=true
+ENABLE_MUSIC_OS=true
+ENABLE_MARKETPLACE=true
+ENABLE_ACADEMY=true
+ENABLE_COMMUNITY=true
+ENABLE_3D_COMMAND_CENTER=false
+ENABLE_WAITLIST=false
+MAINTENANCE_MODE=false
