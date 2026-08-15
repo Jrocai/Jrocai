@@ -1,0 +1,502 @@
+// ============================================================
+// J-ROC AI — Prisma Schema
+// PostgreSQL with pgvector extension (Supabase or Neon)
+// ============================================================
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  directUrl  = env("DIRECT_DATABASE_URL")
+  extensions = [pgvector(map: "vector"), uuid_ossp(map: "uuid-ossp"), pg_trgm]
+}
+
+// ══════════════════════════════════════════════════════════════
+// USERS & AUTH
+// ══════════════════════════════════════════════════════════════
+
+model User {
+  id            String           @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  email         String           @unique
+  name          String
+  avatarUrl     String?
+  tier          SubscriptionTier @default(FREE)
+  autonomyLevel Int              @default(2)
+  timezone      String           @default("America/New_York")
+  language      String           @default("en")
+  isActive      Boolean          @default(true)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  profile       Profile?
+  subscription  Subscription?
+  agents        AgentConfig[]
+  tasks         Task[]
+  missions      Mission[]
+  memories      Memory[]
+  contacts      Contact[]
+  albums        Album[]
+  tracks        Track[]
+  workflows     Workflow[]
+  conversations Conversation[]
+  notifications Notification[]
+  approvals     Approval[]
+  auditLogs     AuditLog[]
+
+  @@index([email])
+  @@map("users")
+}
+
+model Profile {
+  id           String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId       String   @unique @db.Uuid
+  bio          String?
+  location     String?
+  website      String?
+  twitterUrl   String?
+  linkedinUrl  String?
+  instagramUrl String?
+  brandName    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@map("profiles")
+}
+
+// ══════════════════════════════════════════════════════════════
+// BILLING
+// ══════════════════════════════════════════════════════════════
+
+model Subscription {
+  id                   String           @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId               String           @unique @db.Uuid
+  stripeCustomerId     String?          @unique
+  stripeSubscriptionId String?          @unique
+  stripePriceId        String?
+  tier                 SubscriptionTier @default(FREE)
+  status               String           @default("active")
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean          @default(false)
+  trialEndsAt          DateTime?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  user                 User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  usageRecords         UsageRecord[]
+  @@map("subscriptions")
+}
+
+model UsageRecord {
+  id             String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  subscriptionId String       @db.Uuid
+  metric         String
+  quantity       Int
+  recordedAt     DateTime     @default(now())
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id])
+  @@index([subscriptionId, metric, recordedAt])
+  @@map("usage_records")
+}
+
+// ══════════════════════════════════════════════════════════════
+// AI AGENTS
+// ══════════════════════════════════════════════════════════════
+
+model AgentConfig {
+  id            String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId        String      @db.Uuid
+  agentId       String
+  name          String
+  role          String
+  description   String
+  systemPrompt  String      @db.Text
+  model         String      @default("gpt-4o")
+  status        AgentStatus @default(IDLE)
+  autonomyLevel Int         @default(2)
+  tools         String[]
+  isEnabled     Boolean     @default(true)
+  lastRunAt     DateTime?
+  totalRunCount Int         @default(0)
+  metadata      Json        @default("{}")
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  runs          AgentRun[]
+  @@unique([userId, agentId])
+  @@index([userId, status])
+  @@map("agent_configs")
+}
+
+model AgentRun {
+  id               String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  agentConfigId    String      @db.Uuid
+  userId           String      @db.Uuid
+  missionId        String?     @db.Uuid
+  status           String      @default("running")
+  input            String      @db.Text
+  output           String?     @db.Text
+  toolCalls        Json        @default("[]")
+  promptTokens     Int         @default(0)
+  completionTokens Int         @default(0)
+  totalTokens      Int         @default(0)
+  estimatedCostUsd Float       @default(0)
+  latencyMs        Int         @default(0)
+  error            String?
+  metadata         Json        @default("{}")
+  startedAt        DateTime    @default(now())
+  completedAt      DateTime?
+  agentConfig      AgentConfig @relation(fields: [agentConfigId], references: [id])
+  mission          Mission?    @relation(fields: [missionId], references: [id])
+  @@index([userId, startedAt(sort: Desc)])
+  @@index([agentConfigId, startedAt(sort: Desc)])
+  @@map("agent_runs")
+}
+
+// ══════════════════════════════════════════════════════════════
+// MEMORY
+// ══════════════════════════════════════════════════════════════
+
+model Memory {
+  id          String                       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId      String                       @db.Uuid
+  agentId     String?
+  type        String
+  content     String                       @db.Text
+  embedding   Unsupported("vector(1536)")?
+  importance  Int                          @default(5)
+  source      String                       @default("user")
+  expiresAt   DateTime?
+  createdAt   DateTime                     @default(now())
+  accessedAt  DateTime                     @default(now())
+  accessCount Int                          @default(0)
+  user        User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, type])
+  @@index([userId, importance(sort: Desc)])
+  @@map("memories")
+}
+
+// ══════════════════════════════════════════════════════════════
+// CONVERSATIONS & MESSAGES
+// ══════════════════════════════════════════════════════════════
+
+model Conversation {
+  id        String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId    String    @db.Uuid
+  agentId   String?
+  title     String?
+  context   Json      @default("{}")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages  Message[]
+  @@index([userId, updatedAt(sort: Desc)])
+  @@map("conversations")
+}
+
+model Message {
+  id             String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  conversationId String       @db.Uuid
+  role           String
+  content        String       @db.Text
+  toolCalls      Json?
+  toolResults    Json?
+  tokenCount     Int          @default(0)
+  createdAt      DateTime     @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  @@index([conversationId, createdAt])
+  @@map("messages")
+}
+
+// ══════════════════════════════════════════════════════════════
+// TASKS, PROJECTS, MISSIONS
+// ══════════════════════════════════════════════════════════════
+
+model Task {
+  id              String     @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId          String     @db.Uuid
+  title           String
+  description     String?    @db.Text
+  status          TaskStatus @default(BACKLOG)
+  priority        String     @default("medium")
+  category        String     @default("personal")
+  assignedAgentId String?
+  projectId       String?    @db.Uuid
+  missionId       String?    @db.Uuid
+  dueDate         DateTime?
+  completedAt     DateTime?
+  tags            String[]
+  createdBy       String     @default("user")
+  metadata        Json       @default("{}")
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project         Project?   @relation(fields: [projectId], references: [id])
+  mission         Mission?   @relation(fields: [missionId], references: [id])
+  @@index([userId, status])
+  @@index([userId, dueDate])
+  @@map("tasks")
+}
+
+model Project {
+  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId      String   @db.Uuid
+  name        String
+  description String?  @db.Text
+  status      String   @default("active")
+  startDate   DateTime?
+  endDate     DateTime?
+  tags        String[]
+  metadata    Json     @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  tasks       Task[]
+  @@map("projects")
+}
+
+model Mission {
+  id          String     @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId      String     @db.Uuid
+  title       String
+  description String     @db.Text
+  status      String     @default("pending")
+  agentIds    String[]
+  context     Json       @default("{}")
+  result      String?    @db.Text
+  progress    Int        @default(0)
+  startedAt   DateTime   @default(now())
+  completedAt DateTime?
+  metadata    Json       @default("{}")
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks       Task[]
+  agentRuns   AgentRun[]
+  @@index([userId, status])
+  @@map("missions")
+}
+
+// ══════════════════════════════════════════════════════════════
+// CRM
+// ══════════════════════════════════════════════════════════════
+
+model Contact {
+  id              String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId          String   @db.Uuid
+  firstName       String
+  lastName        String
+  email           String?
+  phone           String?
+  company         String?
+  title           String?
+  status          String   @default("new")
+  tags            String[]
+  notes           String?  @db.Text
+  lastContactedAt DateTime?
+  pipelineValue   Float    @default(0)
+  source          String?
+  assignedAgentId String?
+  metadata        Json     @default("{}")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deals           Deal[]
+  @@index([userId, status])
+  @@index([userId, email])
+  @@map("contacts")
+}
+
+model Deal {
+  id                String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  contactId         String   @db.Uuid
+  title             String
+  value             Float    @default(0)
+  stage             String   @default("new")
+  probability       Int      @default(50)
+  expectedCloseDate DateTime?
+  notes             String?  @db.Text
+  agentInsights     String?  @db.Text
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  contact           Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  @@index([contactId, stage])
+  @@map("deals")
+}
+
+// ══════════════════════════════════════════════════════════════
+// SOUNDVAULT — MUSIC OS
+// ══════════════════════════════════════════════════════════════
+
+model Album {
+  id           String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId       String   @db.Uuid
+  title        String
+  artistName   String
+  status       String   @default("in_progress")
+  artworkUrl   String?
+  releaseDate  DateTime?
+  genre        String[]
+  description  String?  @db.Text
+  totalRevenue Float    @default(0)
+  totalStreams  Int      @default(0)
+  metadata     Json     @default("{}")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tracks       Track[]
+  @@index([userId, status])
+  @@map("albums")
+}
+
+model Track {
+  id            String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId        String   @db.Uuid
+  albumId       String?  @db.Uuid
+  title         String
+  artistName    String
+  status        String   @default("draft")
+  duration      Int?
+  bpm           Int?
+  musicalKey    String?
+  genre         String[]
+  mood          String[]
+  lyricsText    String?  @db.Text
+  artworkUrl    String?
+  audioUrl      String?
+  isrc          String?
+  aiTags        String[]
+  aiDescription String?  @db.Text
+  revenue       Float    @default(0)
+  streamCount   Int      @default(0)
+  releaseDate   DateTime?
+  metadata      Json     @default("{}")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  album         Album?   @relation(fields: [albumId], references: [id])
+  @@index([userId, status])
+  @@index([userId, albumId])
+  @@map("tracks")
+}
+
+// ══════════════════════════════════════════════════════════════
+// AUTOMATION / WORKFLOWS
+// ══════════════════════════════════════════════════════════════
+
+model Workflow {
+  id          String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId      String        @db.Uuid
+  name        String
+  description String?       @db.Text
+  trigger     String        @default("manual")
+  isEnabled   Boolean       @default(true)
+  steps       Json          @default("[]")
+  config      Json          @default("{}")
+  runCount    Int           @default(0)
+  lastRunAt   DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  runs        WorkflowRun[]
+  @@index([userId, isEnabled])
+  @@map("workflows")
+}
+
+model WorkflowRun {
+  id          String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workflowId  String    @db.Uuid
+  status      String    @default("running")
+  stepResults Json      @default("[]")
+  error       String?
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+  workflow    Workflow  @relation(fields: [workflowId], references: [id])
+  @@index([workflowId, startedAt(sort: Desc)])
+  @@map("workflow_runs")
+}
+
+// ══════════════════════════════════════════════════════════════
+// APPROVALS & NOTIFICATIONS
+// ══════════════════════════════════════════════════════════════
+
+model Approval {
+  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId      String   @db.Uuid
+  agentId     String
+  action      String
+  description String   @db.Text
+  context     Json     @default("{}")
+  status      String   @default("pending")
+  riskLevel   String   @default("medium")
+  decidedAt   DateTime?
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, status])
+  @@map("approvals")
+}
+
+model Notification {
+  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId    String   @db.Uuid
+  type      String
+  title     String
+  body      String
+  isRead    Boolean  @default(false)
+  data      Json     @default("{}")
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, isRead, createdAt(sort: Desc)])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId     String   @db.Uuid
+  actor      String
+  action     String
+  resource   String
+  resourceId String?
+  before     Json?
+  after      Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([resource, resourceId])
+  @@map("audit_logs")
+}
+
+// ══════════════════════════════════════════════════════════════
+// ENUMS
+// ══════════════════════════════════════════════════════════════
+
+enum SubscriptionTier {
+  FREE
+  PERSONAL
+  BUSINESS
+  COMMANDER
+  ENTERPRISE
+}
+
+enum AgentStatus {
+  ACTIVE
+  IDLE
+  RUNNING
+  PAUSED
+  DISABLED
+  ERROR
+}
+
+enum TaskStatus {
+  BACKLOG
+  PLANNED
+  READY
+  RUNNING
+  WAITING
+  REVIEW
+  COMPLETED
+  CANCELLED
+  FAILED
+}

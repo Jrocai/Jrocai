@@ -1,0 +1,113 @@
+/**
+ * J-ROC AI Orchestrator — Server-side Brain
+ * Routes user input through intent classification → agent execution → memory write
+ */
+import OpenAI from "openai"
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+
+export interface OrchestratorInput {
+  userId:         string
+  input:          string
+  conversationId?: string
+  context?:       Record<string, unknown>
+  autonomyLevel?: number
+}
+
+export interface OrchestratorResult {
+  output:          string
+  agentId:         string
+  missionId?:      string
+  agentRunId:      string
+  requiresApproval:boolean
+  approvalId?:     string
+  tokenUsage:      { total: number; costUsd: number }
+}
+
+export class JRocOrchestrator {
+  constructor(private userId: string, private autonomyLevel = 2) {}
+
+  async process(input: OrchestratorInput): Promise<OrchestratorResult> {
+    const intent  = await this.classifyIntent(input.input)
+    const context = await this.buildContext(input)
+
+    if (intent.requiresApproval && this.autonomyLevel < 3) {
+      const approvalId = `approval_${Date.now()}`
+      return {
+        output: `I need your approval before proceeding. This action (${intent.intent}) requires human confirmation. Check your notifications.`,
+        agentId: intent.agentId, agentRunId: `pending_${approvalId}`,
+        requiresApproval: true, approvalId,
+        tokenUsage: { total: 0, costUsd: 0 },
+      }
+    }
+
+    const agentRunId = `run_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+    const response   = await this.runAgent(intent.agentId, input.input, context)
+
+    return {
+      output:          response.content,
+      agentId:         intent.agentId,
+      agentRunId,
+      requiresApproval: false,
+      tokenUsage: {
+        total:   (response.usage?.total_tokens ?? 0),
+        costUsd: ((response.usage?.prompt_tokens ?? 0) * 5 + (response.usage?.completion_tokens ?? 0) * 15) / 1_000_000,
+      },
+    }
+  }
+
+  private async classifyIntent(input: string) {
+    const res = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0,
+      max_tokens: 200,
+      messages: [
+        {
+          role: "system",
+          content: `Classify the user input and return JSON with: intent (string), agentId (one of: ceo_agent|personal_assistant|executive_assistant|research_agent|marketing_agent|sales_agent|crm_agent|finance_agent|operations_agent|project_manager|content_agent|social_media_agent|seo_agent|design_agent|music_agent|music_marketing_agent|customer_support|automation_agent|data_analyst|developer_agent|qa_agent|security_agent|legal_compliance), requiresApproval (boolean — true if sending email, spending money, or deleting data), confidence (0-1). Respond ONLY with valid JSON.`,
+        },
+        { role: "user", content: input },
+      ],
+    })
+    try {
+      return JSON.parse(res.choices[0]?.message?.content ?? "{}")
+    } catch {
+      return { intent: "general_query", agentId: "personal_assistant", requiresApproval: false, confidence: 0.5 }
+    }
+  }
+
+  private async buildContext(input: OrchestratorInput): Promise<string> {
+    return `User: Jesse (J-ROC) | Location: Holmes, PA | Time: ${new Date().toLocaleString("en-US", { timeZone: "America/New_York" })} | Autonomy Level: ${this.autonomyLevel}/5`
+  }
+
+  private async runAgent(agentId: string, userInput: string, context: string) {
+    const systemPrompts: Record<string, string> = {
+      ceo_agent:             "You are the CEO Agent for J-ROC AI — Jesse's senior strategic advisor. Think at the highest level of business strategy. Be direct, data-driven, and action-oriented.",
+      personal_assistant:    "You are Jesse's Personal Assistant. You manage his personal life, schedule, reminders, and personal tasks. Be warm, proactive, and anticipate needs.",
+      music_agent:           "You are the Music Agent for J-ROC AI — Jesse's dedicated music business AI. You manage SoundVault, track analysis, lyric assistance, and music career operations.",
+      finance_agent:         "You are the Finance Agent. Track revenue, expenses, and provide financial insights. Always be conservative in projections. Flag anything unusual immediately.",
+      marketing_agent:       "You are the Marketing Agent. Handle campaign strategy, brand messaging, marketing calendar, and channel optimization.",
+      sales_agent:           "You are the Sales Agent. Handle lead qualification, outreach drafting, follow-up sequences, and deal progression.",
+      research_agent:        "You are the Research Agent. Conduct deep-dive research, competitive analysis, and synthesize insights with sources and confidence levels.",
+      content_agent:         "You are the Content Agent. Create content, multiply one idea into many formats, and manage the editorial calendar.",
+      automation_agent:      "You are the Automation Agent. Design workflows, identify automation opportunities, and build trigger-based automation sequences.",
+      data_analyst:          "You are the Data Analyst Agent. Analyze data, find patterns, generate insights, and create executive summaries from metrics.",
+    }
+
+    const systemPrompt = systemPrompts[agentId] ?? `You are the ${agentId.replace(/_/g, " ")} for J-ROC AI. Help Jesse with his request.`
+
+    const res = await openai.chat.completions.create({
+      model:       "gpt-4o",
+      max_tokens:  2048,
+      temperature: 0.7,
+      messages: [
+        { role: "system", content: `${systemPrompt}
+
+CONTEXT: ${context}` },
+        { role: "user",   content: userInput },
+      ],
+    })
+
+    return res.choices[0]?.message ?? { content: "I encountered an issue processing your request. Please try again." }
+  }
+}
